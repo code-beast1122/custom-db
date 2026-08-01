@@ -1,13 +1,69 @@
 import asyncio
+import hashlib
+import hmac
+import json
 import os
 import shlex
 import socket
 from engine import BitEngine
 
-HOST = "0.0.0.0"       # Listen on all network interfaces
-PORT = 6379            # Standard custom DB port
-AUTH_PASSWORD = "123"  # Set to None or "" to disable auth requirements
-DEFAULT_DB_NAME = "data"             # Default database name (resolves to data.db)
+CONFIG_FILE = "config.json"
+
+DEFAULT_CONFIG = {
+    "host": "0.0.0.0",
+    "port": 6379,
+    "password": "123",
+    "default_db": "data",
+    "fsync_policy": "everysec"
+}
+
+def load_config() -> dict:
+    """Loads configuration from config.json or falls back to defaults."""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                user_config = json.load(f)
+                config = {**DEFAULT_CONFIG, **user_config}
+                print(f"[Server] Loaded configuration from '{CONFIG_FILE}'")
+                return config
+        except Exception as e:
+            print(f"[Warning] Failed to load '{CONFIG_FILE}': {e}. Using default settings.")
+    else:
+        print(f"[Server] Config file '{CONFIG_FILE}' not found. Created default config.")
+        try:
+            with open(CONFIG_FILE, "w") as f:
+                json.dump(DEFAULT_CONFIG, f, indent=2)
+        except Exception as e:
+            print(f"[Warning] Could not write default '{CONFIG_FILE}': {e}")
+            
+    return DEFAULT_CONFIG
+
+CONFIG = load_config()
+
+HOST = CONFIG.get("host", "0.0.0.0")
+PORT = CONFIG.get("port", 6379)
+RAW_PASSWORD = CONFIG.get("password", "")
+DEFAULT_DB_NAME = CONFIG.get("default_db", "data")
+FSYNC_POLICY = CONFIG.get("fsync_policy", "everysec")
+
+def hash_password(password: str, salt: bytes = b"bitengine_static_salt_2026") -> str:
+    """Generates a secure PBKDF2 hash for a given password."""
+    return hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt,
+        100000
+    ).hex()
+
+# Store ONLY hashed password in memory
+STORED_PASSWORD_HASH = hash_password(RAW_PASSWORD) if RAW_PASSWORD else None
+
+def verify_password(provided_password: str) -> bool:
+    """Safely verifies provided password using constant-time comparison."""
+    if not STORED_PASSWORD_HASH:
+        return True
+    input_hash = hash_password(provided_password)
+    return hmac.compare_digest(input_hash, STORED_PASSWORD_HASH)
 
 def print_help():
     return """
@@ -38,19 +94,18 @@ def get_local_ip() -> str:
     return ip
 
 class KVServer:
-    def __init__(self, password: str | None = None):
-        self.password = password
-        # Cache active database instances: {"data": BitEngine("data.db"), ...}
+    def __init__(self, requires_auth: bool = True, fsync_policy: str = "everysec"):
+        self.requires_auth = requires_auth
+        self.fsync_policy = fsync_policy
         self.databases: dict[str, BitEngine] = {}
 
     def get_or_create_db(self, db_name: str) -> BitEngine:
         """Retrieves an existing BitEngine instance or opens a new one."""
-        # Sanitize db_name to avoid path traversal issues
         clean_name = os.path.basename(db_name).replace(".db", "")
         if clean_name not in self.databases:
             filepath = f"{clean_name}.db"
-            print(f"[Server] Initializing database engine for '{filepath}'")
-            self.databases[clean_name] = BitEngine(filepath)
+            print(f"[Server] Initializing database engine for '{filepath}' (fsync: {self.fsync_policy})")
+            self.databases[clean_name] = BitEngine(db_filepath=filepath, fsync_policy=self.fsync_policy)
         return self.databases[clean_name]
 
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -58,8 +113,7 @@ class KVServer:
         peer_name = writer.get_extra_info('peername')
         print(f"[Server] Client connected from {peer_name}")
         
-        # Track session state per client connection
-        authenticated = self.password is None or len(self.password) == 0
+        authenticated = not self.requires_auth
         current_db_name = DEFAULT_DB_NAME
         current_db = self.get_or_create_db(current_db_name)
 
@@ -67,7 +121,7 @@ class KVServer:
             while True:
                 data = await reader.readline()
                 if not data:
-                    break  # Client disconnected
+                    break
                 
                 command_line = data.decode('utf-8').strip()
                 if not command_line:
@@ -85,11 +139,11 @@ class KVServer:
                 
                 # 1. Process AUTH command
                 if cmd == "AUTH":
-                    if not self.password:
-                        response = "ERR Client sent AUTH, but no password is set on server"
+                    if not self.requires_auth:
+                        response = "ERR Client sent AUTH, but no password is required on server"
                     elif len(args) != 1:
                         response = "ERR Usage: AUTH <password>"
-                    elif args[0] == self.password:
+                    elif verify_password(args[0]):
                         authenticated = True
                         response = "OK (Authenticated)"
                     else:
@@ -168,18 +222,21 @@ class KVServer:
 
         else:
             return f"ERR Unknown command '{cmd}'"
+
     def close_all(self):
         """Closes all open database engine file handles cleanly."""
         print("[Server] Closing all database file handles...")
         for name, db in self.databases.items():
             try:
-                db.close()  # Flushes buffers & releases file locks
+                db.close()
                 print(f"[Server] Closed database '{name}.db'")
             except Exception as e:
                 print(f"[Server] Error closing database '{name}.db': {e}")
 
 async def main():
-    server_instance = KVServer(password=AUTH_PASSWORD)
+    requires_auth = bool(STORED_PASSWORD_HASH)
+    server_instance = KVServer(requires_auth=requires_auth, fsync_policy=FSYNC_POLICY)
+    
     server = await asyncio.start_server(
         server_instance.handle_client, HOST, PORT
     )
@@ -187,11 +244,12 @@ async def main():
     local_ip = get_local_ip()
     
     print(f"==================================================")
-    print(f" BitEngine TCP Server Running!\n Welcome to BitEngine")
+    print(f" BitEngine TCP Server Running!")
     print(f" Local Access      : 127.0.0.1:{PORT}")
     print(f" Network Access    : {local_ip}:{PORT}")
     print(f" Default Database  : {DEFAULT_DB_NAME}.db")
-    print(f" Authentication    : {'ENABLED' if AUTH_PASSWORD else 'DISABLED'}")
+    print(f" Fsync Policy      : {FSYNC_POLICY}")
+    print(f" Authentication    : {'ENABLED (PBKDF2 Hashed)' if requires_auth else 'DISABLED'}")
     print(f" Press Ctrl+C to stop the server")
     print(f"==================================================")
     
@@ -199,9 +257,7 @@ async def main():
         async with server:
             await server.serve_forever()
     finally:
-        # This ALWAYS executes when the server stops or crashes
         server_instance.close_all()
-
 
 if __name__ == "__main__":
     try:

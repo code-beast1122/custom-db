@@ -11,8 +11,10 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 TOMBSTONE = "__DB_TOMBSTONE__"
 
 class BitEngine:
-    def __init__(self, db_filepath: str = "data.db"):
+    def __init__(self, db_filepath: str = "data.db", fsync_policy: str = "everysec"):
         self.db_filepath = db_filepath
+        self.fsync_policy = fsync_policy
+        self.last_sync_time = time.time()
         self.keydir = {}
         self.lock = threading.RLock()
         with self.lock:
@@ -22,6 +24,20 @@ class BitEngine:
             with os_file_lock(self.file):
                 self._build_index()
 
+    def _sync_disk(self, force: bool = False):
+        """Flushes Python internal buffer and forces OS write based on policy."""
+        self.file.flush()
+        
+        if self.fsync_policy == "always" or force:
+            os.fsync(self.file.fileno())
+            self.last_sync_time = time.time()
+            
+        elif self.fsync_policy == "everysec":
+            current_time = time.time()
+            if current_time - self.last_sync_time >= 1.0:
+                os.fsync(self.file.fileno())
+                self.last_sync_time = current_time
+    
     def _build_index(self):
         with self.lock:
             self.keydir.clear()
@@ -77,7 +93,8 @@ class BitEngine:
                 # Write tombstone record to disk
                 self.file.seek(0, os.SEEK_END)
                 self.file.write(record)
-                self.file.flush()
+
+                self._sync_disk()
                 
                 # Remove key from RAM index
                 del self.keydir[key]
@@ -101,7 +118,7 @@ class BitEngine:
                 self.file.seek(0, os.SEEK_END)
                 offset = self.file.tell()
                 self.file.write(record)
-                self.file.flush()
+                self._sync_disk()
                 self.keydir[key] = (offset, record_size)
 
     def get(self, key: str) -> Optional[str]:
@@ -156,7 +173,7 @@ class BitEngine:
                 # Safely wipe contents on disk without closing file stream
                 self.file.seek(0, os.SEEK_SET)
                 self.file.truncate(0)
-                self.file.flush()
+                self._sync_disk(force=True)
                 self.keydir.clear()
                 
                 print(f"[Engine] Database '{self.db_filepath}' completely cleared.")
@@ -164,4 +181,5 @@ class BitEngine:
     def close(self):
         with self.lock:
             if not self.file.closed:
+                self._sync_disk(force = True)
                 self.file.close()

@@ -5,6 +5,7 @@ import json
 import os
 import shlex
 import socket
+from typing import Optional
 from .engine import BitEngine
 
 CONFIG_FILE = "config.json"
@@ -17,7 +18,7 @@ DEFAULT_CONFIG = {
     "fsync_policy": "everysec"
 }
 
-def load_config() -> dict:
+def load_config(create_if_missing: bool = True) -> dict:
     """Loads configuration from config.json or falls back to defaults."""
     if os.path.exists(CONFIG_FILE):
         try:
@@ -28,7 +29,7 @@ def load_config() -> dict:
                 return config
         except Exception as e:
             print(f"[Warning] Failed to load '{CONFIG_FILE}': {e}. Using default settings.")
-    else:
+    elif create_if_missing:
         print(f"[Server] Config file '{CONFIG_FILE}' not found. Created default config.")
         try:
             with open(CONFIG_FILE, "w") as f:
@@ -37,14 +38,6 @@ def load_config() -> dict:
             print(f"[Warning] Could not write default '{CONFIG_FILE}': {e}")
             
     return DEFAULT_CONFIG
-
-CONFIG = load_config()
-
-HOST = CONFIG.get("host", "0.0.0.0")
-PORT = CONFIG.get("port", 6379)
-RAW_PASSWORD = CONFIG.get("password", "")
-DEFAULT_DB_NAME = CONFIG.get("default_db", "data")
-FSYNC_POLICY = CONFIG.get("fsync_policy", "everysec")
 
 def hash_password(password: str, salt: bytes = b"bitengine_static_salt_2026") -> str:
     """Generates a secure PBKDF2 hash for a given password."""
@@ -55,14 +48,12 @@ def hash_password(password: str, salt: bytes = b"bitengine_static_salt_2026") ->
         100000
     ).hex()
 
-STORED_PASSWORD_HASH = hash_password(RAW_PASSWORD) if RAW_PASSWORD else None
-
-def verify_password(provided_password: str) -> bool:
+def verify_password(provided_password: str, stored_hash: Optional[str]) -> bool:
     """Safely verifies provided password using constant-time comparison."""
-    if not STORED_PASSWORD_HASH:
+    if not stored_hash:
         return True
     input_hash = hash_password(provided_password)
-    return hmac.compare_digest(input_hash, STORED_PASSWORD_HASH)
+    return hmac.compare_digest(input_hash, stored_hash)
 
 def print_help():
     return """
@@ -93,9 +84,11 @@ def get_local_ip() -> str:
     return ip
 
 class KVServer:
-    def __init__(self, requires_auth: bool = True, fsync_policy: str = "everysec"):
+    def __init__(self, requires_auth: bool = True, fsync_policy: str = "everysec", default_db_name: str = "data", stored_password_hash: Optional[str] = None):
         self.requires_auth = requires_auth
         self.fsync_policy = fsync_policy
+        self.default_db_name = default_db_name
+        self.stored_password_hash = stored_password_hash
         self.databases: dict[str, BitEngine] = {}
 
     def get_or_create_db(self, db_name: str) -> BitEngine:
@@ -113,7 +106,7 @@ class KVServer:
         print(f"[Server] Client connected from {peer_name}")
         
         authenticated = not self.requires_auth
-        current_db_name = DEFAULT_DB_NAME
+        current_db_name = self.default_db_name
         current_db = self.get_or_create_db(current_db_name)
 
         try:
@@ -141,7 +134,7 @@ class KVServer:
                         response = "ERR Client sent AUTH, but no password is required on server"
                     elif len(args) != 1:
                         response = "ERR Usage: AUTH <password>"
-                    elif verify_password(args[0]):
+                    elif verify_password(args[0], self.stored_password_hash):
                         authenticated = True
                         response = "OK (Authenticated)"
                     else:
@@ -235,21 +228,35 @@ def run_server():
         print("\n[Server] Shutdown signal received.")
 
 async def main():
-    requires_auth = bool(STORED_PASSWORD_HASH)
-    server_instance = KVServer(requires_auth=requires_auth, fsync_policy=FSYNC_POLICY)
+    config = load_config(create_if_missing=True)
+    host = config.get("host", "0.0.0.0")
+    port = config.get("port", 6379)
+    raw_password = config.get("password", "")
+    default_db_name = config.get("default_db", "data")
+    fsync_policy = config.get("fsync_policy", "everysec")
+
+    stored_password_hash = hash_password(raw_password) if raw_password else None
+    requires_auth = bool(stored_password_hash)
+
+    server_instance = KVServer(
+        requires_auth=requires_auth,
+        fsync_policy=fsync_policy,
+        default_db_name=default_db_name,
+        stored_password_hash=stored_password_hash
+    )
     
     server = await asyncio.start_server(
-        server_instance.handle_client, HOST, PORT
+        server_instance.handle_client, host, port
     )
     
     local_ip = get_local_ip()
     
     print(f"==================================================")
     print(f" BitEngine TCP Server Running!")
-    print(f" Local Access      : 127.0.0.1:{PORT}")
-    print(f" Network Access    : {local_ip}:{PORT}")
-    print(f" Default Database  : {DEFAULT_DB_NAME}.db")
-    print(f" Fsync Policy      : {FSYNC_POLICY}")
+    print(f" Local Access      : 127.0.0.1:{port}")
+    print(f" Network Access    : {local_ip}:{port}")
+    print(f" Default Database  : {default_db_name}.db")
+    print(f" Fsync Policy      : {fsync_policy}")
     print(f" Authentication    : {'ENABLED (PBKDF2 Hashed)' if requires_auth else 'DISABLED'}")
     print(f" Press Ctrl+C to stop the server")
     print(f"==================================================")

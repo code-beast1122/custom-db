@@ -4,7 +4,7 @@ import time
 import zlib
 import threading
 from typing import Optional
-from file_lock import os_file_lock
+from .file_lock import os_file_lock
 
 HEADER_FORMAT = ">IdII"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
@@ -75,7 +75,7 @@ class BitEngine:
         with self.lock:
             return list(self.keydir.keys())
 
-    def delete(self, key: str) ->bool:
+    def delete(self, key: str) -> bool:
         with self.lock:
             with os_file_lock(self.file):
                 if key not in self.keydir:
@@ -181,5 +181,5 @@ class BitEngine:
     def close(self):
         with self.lock:
             if not self.file.closed:
-                self._sync_disk(force = True)
+                self._sync_disk(force=True)
                 self.file.close()

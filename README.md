@@ -1,273 +1,150 @@
-# BitEngine - Custom Key-Value Database Engine
+# BitEngine (`bitengine-db`)
 
-A lightweight, high-performance embedded key-value database engine written in Python with both CLI and TCP server/client support. Built on the **Bitcask** log-structured storage model with CRC32 checksums, thread-safe operations, and multi-database support.
+[![PyPI version](https://img.shields.io/pypi/v/bitengine-db.svg)](https://pypi.org/project/bitengine-db/)
+[![Python Version](https://img.shields.io/pypi/pyversions/bitengine-db.svg)](https://pypi.org/project/bitengine-db/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Features
+A lightweight, high-performance embedded & network key-value database engine written in pure Python. Built on the **Bitcask** log-structured storage model with CRC32 checksums, OS-level file locking, thread-safe operations, and multi-database TCP server support.
 
-- **Log-Structured Storage** - Append-only write model for high write throughput
-- **CRC32 Checksums** - Data integrity verification on every read
-- **Thread-Safe** - RLock-based concurrency control with OS-level file locking
-- **Multi-Database Support** - Switch between databases at runtime
-- **TCP Server/Client** - Network-accessible database with authentication
-- **CLI Interface** - Interactive REPL for local database operations
-- **Log Compaction** - Reclaim disk space by removing stale entries
-- **Cross-Platform** - Works on Windows, Linux, and macOS
+---
 
-## Architecture
+## 🚀 Installation
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        BitEngine                             │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   CLI       │  │   TCP       │  │   Python API        │  │
-│  │   (cli.py)  │  │   Server    │  │   (engine.py)       │  │
-│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
-│         │                │                     │             │
-│         └────────────────┼─────────────────────┘             │
-│                          ▼                                   │
-│              ┌───────────────────────┐                       │
-│              │    BitEngine Core     │                       │
-│              │  (engine.BitEngine)   │                       │
-│              └───────────┬───────────┘                       │
-│                          │                                   │
-│              ┌───────────▼───────────┐                       │
-│              │   Storage Layer       │                       │
-│              │  (file_lock + CRC32)  │                       │
-│              └───────────────────────┘                       │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Project Structure
-
-```
-custom_db/
-├── engine.py          # Core database engine (BitEngine class)
-├── cli.py             # Interactive command-line interface
-├── server.py          # Async TCP server with multi-db support
-├── client.py          # TCP client for remote connections
-├── file_lock.py       # Cross-platform file locking (Windows/Linux)
-├── test_db.py         # Multi-threaded stress test
-├── BitEngineClient.spec  # PyInstaller spec for client executable
-├── BitEngineServer.spec  # PyInstaller spec for server executable
-└── build/             # PyInstaller build artifacts
-```
-
-## Quick Start
-
-### 1. Local CLI Usage
+Install directly from PyPI via `pip`:
 
 ```bash
-python cli.py
+pip install bitengine-db
 ```
 
-This opens an interactive REPL connected to `data.db`:
+> **Zero External Dependencies:** BitEngine uses only the Python standard library.
 
+---
+
+## ⚡ Quick Start
+
+### 1. Embedded Library Usage (Python API)
+
+Use `BitEngine` directly in your Python applications without running any external database server process:
+
+```python
+from bitengine import BitEngine
+
+# Open or create an embedded key-value database file
+db = BitEngine("my_data.db", fsync_policy="everysec")
+
+# Store key-value pairs
+db.set("user:1001", "Alice")
+db.set("user:1002", "Bob")
+
+# Retrieve values
+name = db.get("user:1001")
+print(name)  # Output: "Alice"
+
+# List all active keys in RAM index
+print(db.list_keys())  # Output: ['user:1001', 'user:1002']
+
+# Delete a key
+db.delete("user:1002")
+
+# Run log compaction to reclaim disk space from stale/deleted entries
+db.compact()
+
+# Close the database safely
+db.close()
 ```
+
+---
+
+### 2. Interactive Terminal REPL
+
+Installing `bitengine-db` provides terminal commands out of the box:
+
+```bash
+bitengine-cli
+```
+
+Output:
+```text
 ===================================================
    Bitcask Custom Database Engine CLI (REPL Mode)
    Connected to: data.db | Active Keys: 0
    Type 'HELP' for available commands.
 ===================================================
 
-custom_db> SET username "john_doe"
-OK (Set 'username')
+custom_db> SET session_id "xyz_987"
+OK (Set 'session_id')
 
-custom_db> GET username
-"john_doe"
+custom_db> GET session_id
+"xyz_987"
 
 custom_db> KEYS
-1) "username"
+1) "session_id"
 
-custom_db> HELP
+custom_db> COMPACT
+Running log compaction...
+OK (Database compacted successfully)
 ```
-
-### 2. TCP Server/Client Mode
-
-**Start the server:**
-```bash
-python server.py
-```
-
-Output:
-```
-==================================================
- BitEngine TCP Server Running!
- Welcome to BitEngine
- Local Access      : 127.0.0.1:6379
- Network Access    : 192.xxx.x.xxx:6379
- Default Database  : data.db
- Authentication    : ENABLED
- Press Ctrl+C to stop the server
-==================================================
-```
-
-**Connect with client:**
-```bash
-# Local connection
-python client.py
-
-# Remote connection (specify server IP)
-python client.py 192.xxx.x.xxx
-```
-
-**Client session:**
-```
-Connected to BitEngine DB Server at 127.0.0.1:6379
-Type commands (e.g., AUTH <password>, SET k v, GET k, KEYS, DEL k). Type 'exit' to quit.
-
-127.0.0.1:6379> AUTH 123
-OK (Authenticated)
-
-127.0.0.1:6379> SET user:1001 "Alice"
-OK
-
-127.0.0.1:6379> GET user:1001
-VALUE: Alice
-
-127.0.0.1:6379> KEYS
-user:1001
-
-127.0.0.1:6379> USE sessions
-OK (Switched to database 'sessions')
-
-127.0.0.1:6379> SET session:abc "active"
-OK
-```
-
-### 3. Python API Usage
-
-```python
-from engine import BitEngine
-
-# Create/open database
-db = BitEngine("my_database.db")
-
-# Basic operations
-db.set("key", "value")
-value = db.get("key")        # Returns "value" or None
-db.delete("key")             # Returns True/False
-
-# List all keys
-keys = db.list_keys()
-
-# Maintenance
-db.compact()                 # Reclaim disk space
-db.clear()                   # Wipe all data
-
-# Cleanup
-db.close()
-```
-
-## Command Reference
-
-### CLI Commands (`cli.py`)
-
-| Command | Description |
-|---------|-------------|
-| `SET <key> <value>` | Store a key-value pair (use quotes for multi-word values) |
-| `GET <key>` | Retrieve a value by key |
-| `DELETE <key>` | Delete a key-value pair |
-| `KEYS` | List all active keys in RAM |
-| `COMPACT` | Run log compaction to reclaim disk space |
-| `CLEAR` | Completely wipe all data in the database |
-| `HELP` | Show available commands |
-| `EXIT` / `QUIT` | Close the CLI |
-
-### Server Commands (`server.py`)
-
-| Command | Description |
-|---------|-------------|
-| `AUTH <password>` | Authenticate session (default password: `123`) |
-| `USE` / `SELECT <dbname>` | Switch active database (creates `<dbname>.db` if missing) |
-| `SET <key> <value>` | Store a key-value pair in active database |
-| `GET <key>` | Retrieve a value by key from active database |
-| `DELETE` / `DEL <key>` | Delete a key-value pair from active database |
-| `KEYS` | List all active keys in RAM for active database |
-| `COMPACT` | Run log compaction on active database file |
-| `CLEAR` | Completely wipe all data in active database |
-| `PING` | Test connection (returns `PONG`) |
-| `HELP` | Show this menu |
-| `EXIT` / `QUIT` | Close connection |
-
-## Configuration
-
-### Server Configuration (`server.py`)
-
-```python
-HOST = "0.0.0.0"       # Listen on all network interfaces
-PORT = 6379            # Standard custom DB port
-AUTH_PASSWORD = "123"  # Set to None or "" to disable auth
-DEFAULT_DB_NAME = "data"  # Default database name
-```
-
-### Building Executables
-
-The project includes PyInstaller spec files for creating standalone executables:
-
-```bash
-# Build client executable
-pyinstaller BitEngineClient.spec
-
-# Build server executable
-pyinstaller BitEngineServer.spec
-```
-
-Executables will be in `dist/BitEngineClient.exe` and `dist/BitEngineServer.exe`.
-
-## Storage Format
-
-Each record in the database file follows this binary format:
-
-```
-┌──────────────┬────────────┬──────────┬──────────┬──────────┬──────────┐
-│ CRC32 (4B)   │ Timestamp  │ Key Len  │ Val Len  │ Key      │ Value    │
-│ (uint32)     │ (double)   │ (uint32) │ (uint32) │ (bytes)  │ (bytes)  │
-└──────────────┴────────────┴──────────┴──────────┴──────────┴──────────┘
-     4 bytes       8 bytes      4 bytes    4 bytes    N bytes    M bytes
-```
-
-- **CRC32**: Checksum of `key + value` for corruption detection
-- **Timestamp**: Unix epoch time (float) for record ordering
-- **Key/Val Len**: Length prefixes for variable-length strings
-- **TOMBSTONE**: Special value `__DB_TOMBSTONE__` marks deleted keys
-
-## Concurrency & Safety
-
-- **Thread Safety**: `threading.RLock` protects all in-memory operations
-- **File Locking**: OS-level locks (`msvcrt` on Windows, `fcntl` on Unix) prevent concurrent file corruption
-- **Atomic Writes**: Records written in single `write()` + `flush()` operation
-- **Crash Recovery**: Index rebuilt from log on startup with CRC32 validation
-
-## Testing
-
-Run the multi-threaded stress test:
-
-```bash
-python test_db.py
-```
-
-Expected output:
-```
---- Starting Multi-Threaded Stress Test ---
-[SUCCESS] 10 threads completed 1,000 concurrent operations in 0.45s!
-Total active keys in index: 1000
-```
-
-## Requirements
-
-- Python 3.8+
-- Standard library only (no external dependencies)
-
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `python test_db.py`
-5. Submit a pull request
 
 ---
 
-**BitEngine** - Simple, fast, reliable key-value storage.
+### 3. TCP Network Server & Client
+
+Start a network-accessible database server supporting multiple client connections:
+
+```bash
+bitengine-server
+```
+
+Connect remotely using the client tool:
+
+```bash
+# Connect to local or remote server
+bitengine-client 127.0.0.1
+```
+
+Client commands:
+```text
+bit-engine (127.0.0.1)> AUTH 123
+OK (Authenticated)
+
+bit-engine (127.0.0.1)> USE analytics
+OK (Switched to database 'analytics')
+
+bit-engine (127.0.0.1)> SET status "active"
+OK
+
+bit-engine (127.0.0.1)> GET status
+VALUE: active
+```
+
+---
+
+## ✨ Core Features
+
+- 🪵 **Bitcask Log-Structured Storage:** Fast append-only write model for high write throughput.
+- 🛡️ **CRC32 Data Integrity Verification:** Protects against data corruption on disk by validating checksums on every read.
+- 🔒 **OS-Level & Thread-Safe Concurrency:** RLock concurrency control combined with cross-platform OS file locking (`msvcrt` on Windows, `fcntl` on Linux/macOS).
+- 🧹 **Automatic Log Compaction:** Reclaims disk space by purging deleted tombstones and overwritten keys.
+- ⚡ **Zero Third-Party Dependencies:** Pure Python standard library implementation (`struct`, `zlib`, `threading`, `asyncio`, `socket`).
+- 🌐 **Multi-Database TCP Server:** Built-in async server supporting runtime database switching (`USE <dbname>`) and PBKDF2 password authentication.
+
+---
+
+## 📖 Python API Reference
+
+### `BitEngine(db_filepath="data.db", fsync_policy="everysec")`
+Initializes and opens the Bitcask database engine.
+
+- **`set(key: str, value: str)`**: Store or overwrite a key-value pair.
+- **`get(key: str) -> Optional[str]`**: Retrieve a value by key. Returns `None` if the key does not exist.
+- **`delete(key: str) -> bool`**: Mark key as deleted via tombstone. Returns `True` if key was deleted, `False` if key wasn't found.
+- **`list_keys() -> List[str]`**: Return a list of all active keys currently in RAM index.
+- **`compact()`**: Merge and clean up the database file on disk to remove old/deleted records.
+- **`clear()`**: Wipe all records in the database.
+- **`close()`**: Flush buffers, force disk write, and safely close file handles.
+
+---
+
+## 📜 License
+
+Distributed under the **MIT License**. See `LICENSE` for details.

@@ -25,13 +25,13 @@ def run_client(host=None, port=6379):
                 break
             
     except ConnectionRefusedError:
-        print(f"[Error] Could not connect to server at {host}:{port}. Is server.py running?")
+        print(f"[Error] Could not connect to server at {host}:{port}. Is server running?")
     except Exception as e:
         print(f"[Error] Network error: {e}")
     finally:
         s.close()
 
-if __name__ == "__main__":
+def main():
     if len(sys.argv) > 1:
         target_host = sys.argv[1]
     else:
@@ -39,3 +39,6 @@ if __name__ == "__main__":
         target_host = user_input if user_input else "127.0.0.1"
         
     run_client(target_host)
+
+if __name__ == "__main__":
+    main()

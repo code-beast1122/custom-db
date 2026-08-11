@@ -5,7 +5,7 @@ import json
 import os
 import shlex
 import socket
-from engine import BitEngine
+from .engine import BitEngine
 
 CONFIG_FILE = "config.json"
 
@@ -55,7 +55,6 @@ def hash_password(password: str, salt: bytes = b"bitengine_static_salt_2026") ->
         100000
     ).hex()
 
-# Store ONLY hashed password in memory
 STORED_PASSWORD_HASH = hash_password(RAW_PASSWORD) if RAW_PASSWORD else None
 
 def verify_password(provided_password: str) -> bool:
@@ -137,7 +136,6 @@ class KVServer:
                 cmd = parts[0].upper()
                 args = parts[1:]
                 
-                # 1. Process AUTH command
                 if cmd == "AUTH":
                     if not self.requires_auth:
                         response = "ERR Client sent AUTH, but no password is required on server"
@@ -149,11 +147,9 @@ class KVServer:
                     else:
                         response = "ERR Invalid password"
                 
-                # 2. Block unauthenticated commands
                 elif not authenticated and cmd not in ("PING", "HELP", "EXIT", "QUIT"):
                     response = "ERR Unauthenticated. Please run 'AUTH <password>' first."
                 
-                # 3. Process USE / SELECT database switching command
                 elif cmd in ("USE", "SELECT"):
                     if len(args) != 1:
                         response = "ERR Usage: USE <dbname>"
@@ -163,7 +159,6 @@ class KVServer:
                         current_db_name = new_db_name
                         response = f"OK (Switched to database '{current_db_name}')"
                 
-                # 4. Route database commands to client's selected DB engine
                 else:
                     response = self.execute_command(current_db, cmd, args)
                 
@@ -233,6 +228,12 @@ class KVServer:
             except Exception as e:
                 print(f"[Server] Error closing database '{name}.db': {e}")
 
+def run_server():
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n[Server] Shutdown signal received.")
+
 async def main():
     requires_auth = bool(STORED_PASSWORD_HASH)
     server_instance = KVServer(requires_auth=requires_auth, fsync_policy=FSYNC_POLICY)
@@ -260,7 +261,4 @@ async def main():
         server_instance.close_all()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n[Server] Shutdown signal received.")
+    run_server()

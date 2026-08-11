@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bitengine-db"
+version = "0.1.1"
+description = "A lightweight, high-performance embedded & network key-value database engine written in Python"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+    { name = "BitEngine Team" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database :: Database Engines/Servers",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/yourusername/bitengine"
+
+[project.scripts]
+bitengine-cli = "bitengine.cli:main"
+bitengine-server = "bitengine.server:main"
+bitengine-client = "bitengine.client:main"
+
+[tool.setuptools.packages.find]
+include = ["bitengine*"]

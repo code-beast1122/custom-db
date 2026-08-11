@@ -6,6 +6,7 @@ if sys.platform == 'win32':
 
     @contextlib.contextmanager
     def os_file_lock(file_handle):
+        file_handle.flush()
         pos = file_handle.tell()
         file_handle.seek(0)
 
@@ -14,18 +15,23 @@ if sys.platform == 'win32':
         try:
             yield
         finally:
+            file_handle.flush()
             pos = file_handle.tell()
             file_handle.seek(0)
-            msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+            try:
+                msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
             file_handle.seek(pos)
 else:
     import fcntl
 
     @contextlib.contextmanager
     def os_file_lock(file_handle):
-        
+        file_handle.flush()
         fcntl.flock(file_handle.fileno(), fcntl.LOCK_EX)
         try:
             yield
         finally:
+            file_handle.flush()
             fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)

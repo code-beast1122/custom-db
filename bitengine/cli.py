@@ -1,6 +1,6 @@
 import sys
 import shlex
-from engine import BitEngine
+from .engine import BitEngine
 
 def print_help():
     print("""
@@ -29,7 +29,6 @@ def run_cli():
             if not user_input:
                 continue
 
-            # Split command using shlex to respect quoted strings like: SET title "Hello World"
             tokens = shlex.split(user_input)
             cmd = tokens[0].upper()
             args = tokens[1:]
@@ -54,7 +53,6 @@ def run_cli():
                     print("[Error] Usage: SET <key> <value>")
                     continue
                 key = args[0]
-                # Join remaining args if not quoted
                 value = " ".join(args[1:]) if len(args) > 2 else args[1]
                 db.set(key, value)
                 print(f"OK (Set '{key}')")
@@ -81,14 +79,6 @@ def run_cli():
                 else:
                     print("(nil) - Key does not exist")
 
-            elif cmd == "KEYS":
-                keys = list(db.keydir.keys())
-                if not keys:
-                    print("(empty database)")
-                else:
-                    for idx, k in enumerate(keys, 1):
-                        print(f"{idx}) \"{k}\"")
-
             elif cmd == "COMPACT":
                 print("Running log compaction...")
                 db.compact()
@@ -112,5 +102,8 @@ def run_cli():
         except Exception as e:
             print(f"[Error] {e}")
 
-if __name__ == "__main__":
+def main():
     run_cli()
+
+if __name__ == "__main__":
+    main()

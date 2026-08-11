@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bitengine-db"
-version = "0.1.4"
+version = "0.1.5"
 description = "A lightweight, high-performance embedded & network key-value database engine written in Python"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -32,7 +32,7 @@ Repository = "https://github.com/code-beast1122/custom-db"
 
 [project.scripts]
 bitengine-cli = "bitengine.cli:main"
-bitengine-server = "bitengine.server:main"
+bitengine-server = "bitengine.server:run_server"
 bitengine-client = "bitengine.client:main"
 
 [tool.setuptools.packages.find]

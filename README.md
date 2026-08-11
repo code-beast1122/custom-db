@@ -1,6 +1,6 @@
 # BitEngine (`bitengine-db`)
 
-[![PyPI version](https://img.shields.io/pypi/v/bitengine-db.svg?color=orange&cacheSeconds=60)](https://pypi.org/project/bitengine-db/)
+[![PyPI version](https://img.shields.io/pypi/v/bitengine-db.svg?color=orange&v=0.1.6)](https://pypi.org/project/bitengine-db/)
 [![Python Version](https://img.shields.io/pypi/pyversions/bitengine-db.svg)](https://pypi.org/project/bitengine-db/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
